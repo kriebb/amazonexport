@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Debug TypeScript",
+        "program": "${workspaceFolder}/dist/Main.js",
+        "preLaunchTask": "tsc: build - tsconfig.json",
+        "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+        "sourceMaps": true,
+        "skipFiles": [
+          "<node_internals>/**"
+        ],
+        "resolveSourceMapLocations": [
+          "${workspaceFolder}/**",
+          "!**/node_modules/**"
+        ]
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Launch Program",
+        "program": "tsc && ${workspaceFolder}/dist/Main.js",
+        "preLaunchTask": "tsc: build - tsconfig.json",
+        "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+        "skipFiles": [
+          "<node_internals>/**"
+      ],
+      },
+
+    ]
+  }

@@ -1,0 +1,12 @@
+.env
+orders.csv
+orderdetails.json
+orderdetailswithprices.json
+orders_be.csv
+orderdetails_be.json
+orderdetailswithprices_be.json
+orders_de.csv
+orderdetails_de.json
+orderdetailswithprices_de.json
+node_modules
+dist
