@@ -80,3 +80,6 @@ logs/
 
 # Vercel
 # .vercel
+
+order*.json
+order*.csv

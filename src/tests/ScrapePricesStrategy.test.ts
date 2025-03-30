@@ -7,7 +7,16 @@ import { OrderDetails } from '../OrderDetails';
 
 describe('ScrapePricesStrategy', () => {
     let scrapePricesStrategy: ScrapePricesStrategy;
-
+    const priceSelectors = [
+        '.a-price-whole',
+        '.a-price-fraction',
+        '.a-offscreen',
+        '.a-color-price',
+        '[data-component="unitPrice"] .a-text-price',
+        '.yohtmlc-item .a-color-price',
+        '.item-price',
+        '.a-price .a-offscreen'
+      ];
     beforeEach(() => {
         scrapePricesStrategy = new ScrapePricesStrategy(new URL('https://example.com'), { getCurrentPage: () => null } as any);
     });
@@ -17,7 +26,8 @@ describe('ScrapePricesStrategy', () => {
             var content = fs.readFileSync('.\\assets\\datacomponent_unitprice.html', { encoding: 'utf-8' });
             const dom = new JSDOM(content);
 
-            const price = await scrapePricesStrategy.extractPrice(dom.window.document.body);
+            const price = await scrapePricesStrategy.extractPrice(dom.window.document.body , priceSelectors);        // Extensive price selector attempts
+             
             expect(price).toBe('€16,99');
         });
     });

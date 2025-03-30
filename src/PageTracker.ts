@@ -60,6 +60,17 @@ export class PageTracker {
         await this.getCurrentPage().locator('#ap_password').fill(password);
         await this.getCurrentPage().locator('#ap_password').press('Enter');
 
+            
+    // After submitting password, wait for the orders page to load OR wait for manual 2FA completion
+    console.log('Login submitted. If 2FA is required, please complete it in the browser window.');
+    console.log('Waiting for successful navigation to the orders page...');
+    
+    // Wait for the orders page or content to be visible
+    await this.getCurrentPage().waitForSelector('.a-pagination, .order-card', {
+        timeout: 300000, // 5 minutes for the user to complete any MFA if needed
+        state: 'attached'
+    });
+
         this._isLoggedIn = true;
     }
 
