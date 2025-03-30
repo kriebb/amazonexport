@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.yarn-integrity
+
+# Build / Generate output
+dist/
+build/
+lib/
+*.tsbuildinfo
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+/coverage
+/.nyc_output
+
+# Editor directories and files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Debug logs
+logs/
+*.log
+
+# Cache
+.eslintcache
+.npm
+.cache
+
+# Optional: Uncomment the relevant lines below if you use these tools
+# Lerna
+# /lerna-debug.log
+
+# Storybook
+# storybook-static/
+
+# Next.js
+# .next/
+# out/
+
+# Webpack
+# .webpack/
+
+# Parcel
+# .parcel-cache
+# .cache/
+
+# Docusaurus
+# .docusaurus
+
+# Turbo
+# .turbo
+
+# Local Netlify folder
+# .netlify
+
+# Vercel
+# .vercel
