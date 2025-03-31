@@ -5,6 +5,7 @@ import { ScrapePricesStrategy } from './ScrapePricesStrategy';
 import { PageTracker } from './PageTracker';
 import { getPaginationLinks } from './Utils';
 import { OrderProcessor } from './OrderProcessor';
+import { ScrapePricesStrategyFactory } from './ScrapePricesStrategyFactory';
 
 export class OrderOrchestrator {
   constructor(
@@ -26,13 +27,13 @@ export class OrderOrchestrator {
 
     const otherOrdersOverviewLinks = await getPaginationLinks(this.pageTracker);
     console.log('Other order overview links:', otherOrdersOverviewLinks);
-
-    const scrapeOrderProcessor = new OrderProcessor(new ScrapeOrdersStrategy(this.pageTracker));
-    orders.push(...await scrapeOrderProcessor.execute(orders));
+    const enrichPriceOrderProcessor = new OrderProcessor(
+      ScrapePricesStrategyFactory.create(this.orderUrlTemplate, this.pageTracker)
+    );
 
     for (const link of otherOrdersOverviewLinks) {
       await this.pageTracker.getCurrentPage().goto(link, { waitUntil: 'domcontentloaded', timeout: 5000 });
-      orders.push(...await scrapeOrderProcessor.execute(orders));
+      orders.push(...await enrichPriceOrderProcessor.execute(orders));
     }
 
     fs.writeFileSync(this.pathToOrderDtailsJson, JSON.stringify(orders), 'utf8');
