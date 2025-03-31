@@ -18,10 +18,10 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
     this.logFilePath = path.join(__dirname, 'price-scraping-diagnostics.log');
   }
 
-  private logDiagnostics(message: string | object | null) {
+  private logDiagnostics(message: string | object | null): void {
     const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] ${typeof message === 'string'  ? message : JSON.stringify(message, null, 2)}\n`;
-    
+    const logMessage = `[${timestamp}] ${typeof message === 'string' ? message : JSON.stringify(message, null, 2)}\n`;
+
     try {
       fs.appendFileSync(this.logFilePath, logMessage);
     } catch (error) {
@@ -44,11 +44,11 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
       });
     });
 
-    for (let shipmentElement of shipmentElements) {
+    for (const shipmentElement of shipmentElements) {
       try {
         const dom = new JSDOM(shipmentElement);
         const shipmentElementBody = dom.window.document.body;
-        
+
         // Extensive price selector attempts
         const priceSelectors = [
           '.a-price-whole',
@@ -61,12 +61,11 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           '.a-price .a-offscreen'
         ];
 
-        let extractedPrice: string | undefined = this.extractPrice(shipmentElementBody, priceSelectors);
-
+        const extractedPrice = this.extractPrice(shipmentElementBody, priceSelectors);
 
         // Item link and product ID extraction
         const itemLinkSelectors = [
-          '.yohtmlc-item .a-link-normal', 
+          '.yohtmlc-item .a-link-normal',
           '[data-component="itemTitle"] .a-link-normal',
           '.a-link-normal',
           'a[href*="/dp/"]',
@@ -75,7 +74,7 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
         ];
 
         let itemLink: string | null = null;
-        let productId: string | null | undefined;
+        let productId: string | null = null;
         let itemTitle: string | undefined;
 
         for (const selector of itemLinkSelectors) {
@@ -96,7 +95,7 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           '.a-badge-text',
           '.item-quantity'
         ];
-        let itemQty: string = "1";
+        let itemQty = "1";
         for (const selector of qtySelectors) {
           const qtyElement = shipmentElementBody.querySelector(selector);
           if (qtyElement) {
@@ -117,8 +116,7 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
 
         // If productId is found, try to match with order items
         if (productId || itemTitle) {
-          const matchingOrderItem = order.items.find(item => 
-            // Try multiple matching strategies
+          const matchingOrderItem = order.items.find(item =>
             (productId && item.productId?.trim() === productId?.trim()) ||
             (itemTitle && item.title && item.title.includes(itemTitle))
           );
@@ -150,9 +148,9 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
   public async process(orders: OrderDetails[]): Promise<OrderDetails[]> {
     this.logDiagnostics(`Starting price scraping for ${orders.length} orders`);
 
-    for (let order of orders) {
+    for (const order of orders) {
       try {
-        const orderDetailsUrl: URL = new URL(this.orderItemsTemplateUrl.href.replace('%%ORDER_NUMBER%%', order.orderId || ''));
+        const orderDetailsUrl = new URL(this.orderItemsTemplateUrl.href.replace('%%ORDER_NUMBER%%', order.orderId || ''));
         this.logDiagnostics(`Navigating to order details URL: ${orderDetailsUrl.href}`);
 
         await this.tracker.getCurrentPage().goto(orderDetailsUrl.href, { waitUntil: 'load', timeout: 5000 });
@@ -160,13 +158,11 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
         order.url = orderDetailsUrl;
 
         const pageContent = await this.tracker.getCurrentPage().content();
-
         const shipmentElements = this.extractShipmentElements(pageContent);
         this.logDiagnostics(`Found ${shipmentElements.length} shipment elements`);
 
         order.items = await this.processShipmentElements(shipmentElements, order);
-      }
-      catch (error) {
+      } catch (error) {
         console.error('Error while processing order details:', error);
         this.logDiagnostics(`Error processing order ${order.orderId}: ${error}`);
       }
@@ -174,7 +170,7 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
     return orders;
   }
 
-  extractShipmentElements = (pageContent: string) => {
+  public extractShipmentElements(pageContent: string): string[] {
     const shipmentElements: string[] = [];
 
     try {
@@ -183,9 +179,9 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
 
       // Extended selectors to capture more potential shipment elements
       const shipmentSelectors = [
-        '[data-component="shipments"]', 
-        '.shipment', 
-        '[data-component="purchasedItems"]', 
+        '[data-component="shipments"]',
+        '.shipment',
+        '[data-component="purchasedItems"]',
         '.a-box.a-spacing-base',
         '.order-items-container'
       ];
@@ -203,26 +199,25 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           }
         });
       });
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Error while extracting shipment elements:', error);
       this.logDiagnostics(`Shipment element extraction error: ${error}`);
     }
     return shipmentElements;
   }
 
-  extractProductIdFromUrl(itemUri: string | undefined): string | null | undefined {
-    if (!itemUri) return undefined;
-    
+  public extractProductIdFromUrl(itemUri: string | undefined): string | null {
+    if (!itemUri) return null;
+
     try {
       // Normalize the URL
-      const fullUrl = itemUri.startsWith('http') 
-        ? itemUri 
+      const fullUrl = itemUri.startsWith('http')
+        ? itemUri
         : `https://www.amazon.com.be${itemUri}`;
 
       const url = new URL(fullUrl);
       const pathParts = url.pathname.split('/').filter(part => part);
-      
+
       // Common Amazon URL patterns
       const productIdCandidates = [
         url.searchParams.get('productId'),  // Check query params first
@@ -232,43 +227,33 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
         pathParts[4],  // Backup for 'product' in path
       ];
 
-      const validProductId = productIdCandidates.find(id => 
-        id && 
-        id !== 'product' && 
-        id !== 'dp' && 
+      const validProductId = productIdCandidates.find(id =>
+        id &&
+        id !== 'product' &&
+        id !== 'dp' &&
         /^[A-Z0-9]+$/.test(id)
       );
 
       this.logDiagnostics(`Product ID extraction for ${itemUri}: ${validProductId}`);
-      return validProductId;
+      return validProductId ?? null;
     } catch (error) {
       console.error('Invalid URL for product ID:', itemUri);
       this.logDiagnostics(`Product ID extraction error for ${itemUri}: ${error}`);
-      return undefined;
+      return null;
     }
   }
-  extractPrice(shipmentElementBody: HTMLElement,priceSelectors: string[]): string | undefined {
-    /*let price: string | undefined = undefined;
-    const priceElement = shipmentElement.querySelector('.yohtmlc-item .a-color-price , [data-component="unitPrice"] .a-text-price .a-offscreen');
-    if (priceElement) {
-      price = (priceElement?.textContent)?.trim();
-    }
-    else {
-      console.log('No price element found in' + this.prettyPrintHTML(shipmentElement.outerHTML));
-    }
-    return price;*/
 
-    let  extractedPrice: string | undefined = undefined;
+  public extractPrice(shipmentElementBody: HTMLElement, priceSelectors: string[]): string | undefined {
     for (const selector of priceSelectors) {
       const priceElement = shipmentElementBody.querySelector(selector);
       if (priceElement) {
-        extractedPrice = priceElement.textContent?.trim();
+        const extractedPrice = priceElement.textContent?.trim();
         if (extractedPrice) {
           this.logDiagnostics(`Found price with selector: ${selector}, Price: ${extractedPrice}`);
-          break;
+          return extractedPrice;
         }
       }
     }
-    return extractedPrice  == null ? undefined : extractedPrice;
+    return undefined;
   }
 }

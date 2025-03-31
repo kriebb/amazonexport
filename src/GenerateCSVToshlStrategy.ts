@@ -36,7 +36,6 @@ export class GenerateCSVToshlStrategy implements OrderProcessingStrategy {
           itemProductId: item.productId,
         });
       });
-
     });
 
     console.log(orderItems);
@@ -53,20 +52,54 @@ export class GenerateCSVToshlStrategy implements OrderProcessingStrategy {
         { id: 'itemQty', title: 'Item Qty' },
         { id: 'currency', title: 'Currency' },
         { id: 'orderTotal', title: 'Order Total' },
-
       ]
     });
 
-
-    const records = orderItems.map(order => ({
-      orderDate: this.formatDate(order.orderPlacedDate),
-      itemDescription: this.parseDeliveryStatus(order.itemReturnPolicy, order.deliveryStatus).status + ' ' + order.itemTitle + ' [' + order.orderUrl?.href + '] - ' + order.orderId,
-      itemPrice: order.itemPrice != undefined ? (this.parseInt(order.itemQty) * this.parseInt(order.itemPrice) > this.parseInt(order.orderTotal) ? this.parseInt(order.orderTotal) : this.parseInt(order.itemQty) * this.parseInt(order.itemPrice)) : undefined,
-      itemQty: this.parseInt(order.itemQty),
-      currency: 'EUR',
-      orderTotal: this.parseInt(order.orderTotal)
-
-    }));
+    // Group items by order ID to handle multi-item orders correctly
+    const orderGroups = this.groupItemsByOrder(orderItems);
+    
+    const records = [];
+    
+    for (const [orderId, items] of Object.entries(orderGroups)) {
+      const orderTotal = this.parseInt(items[0].orderTotal);
+      
+      // Calculate total of items with known prices
+      const itemsWithPrices = items.filter(item => item.itemPrice !== undefined);
+      const knownPricesTotal = itemsWithPrices.reduce(
+        (sum, item) => sum + (this.parseInt(item.itemQty) * this.parseInt(item.itemPrice!)), 
+        0
+      );
+      
+      // Calculate remaining amount for items without prices
+      const itemsWithoutPrices = items.filter(item => item.itemPrice === undefined);
+      const remainingAmount = Math.max(0, orderTotal - knownPricesTotal);
+      
+      // Distribute remaining amount among items without prices
+      const itemsWithoutPricesCount = itemsWithoutPrices.length;
+      let distributedAmount = 0;
+      
+      // Process items with prices first
+      for (const item of itemsWithPrices) {
+        records.push(this.createCsvRecord(item, this.parseInt(item.itemPrice!) * this.parseInt(item.itemQty), orderTotal));
+      }
+      
+      // Then distribute remaining amount to items without prices
+      for (let i = 0; i < itemsWithoutPricesCount; i++) {
+        const item = itemsWithoutPrices[i];
+        let itemAmount;
+        
+        if (i === itemsWithoutPricesCount - 1) {
+          // Last item gets whatever is left to ensure exact total
+          itemAmount = remainingAmount - distributedAmount;
+        } else {
+          // Distribute evenly among items
+          itemAmount = remainingAmount / itemsWithoutPricesCount;
+          distributedAmount += itemAmount;
+        }
+        
+        records.push(this.createCsvRecord(item, itemAmount, orderTotal));
+      }
+    }
 
     await csvWriter.writeRecords(records);
     console.log('CSV file written successfully:', this.filePath);
@@ -74,14 +107,47 @@ export class GenerateCSVToshlStrategy implements OrderProcessingStrategy {
     return orders;
   }
 
+  /**
+   * Group order items by order ID to handle multi-item orders
+   */
+  private groupItemsByOrder(orderItems: OrderItemDetails[]): Record<string, OrderItemDetails[]> {
+    const groups: Record<string, OrderItemDetails[]> = {};
+    
+    for (const item of orderItems) {
+      if (!groups[item.orderId]) {
+        groups[item.orderId] = [];
+      }
+      groups[item.orderId].push(item);
+    }
+    
+    return groups;
+  }
+  
+  /**
+   * Create a CSV record for an item with the correct price allocation
+   */
+  private createCsvRecord(item: OrderItemDetails, itemPrice: number, orderTotal: number) {
+    return {
+      orderDate: this.formatDate(item.orderPlacedDate),
+      itemDescription: this.parseDeliveryStatus(item.itemReturnPolicy, item.deliveryStatus).status + ' ' 
+                       + item.itemTitle + ' [' + item.orderUrl?.href + '] - ' + item.orderId,
+      itemPrice: itemPrice,
+      itemQty: this.parseInt(item.itemQty),
+      currency: 'EUR',
+      orderTotal: orderTotal
+    };
+  }
+
   parseInt = (moneyStr: string): number => {
     // Remove the currency symbol and any non-numeric characters
+    if (!moneyStr) return 0;
     const cleanedStr = moneyStr.replace(/[^\d,.-]/g, '').replace(',', '.');
     // Convert the cleaned string to a number
     const moneyValue = parseFloat(cleanedStr);
     // Return the numerical value
     return isNaN(moneyValue) ? 0 : moneyValue;
   }
+
   formatDate = (dateStr: string | null): string => {
     if (!dateStr) return new Date().toISOString().split('T')[0];
     const months: { [key: string]: string; } = {
@@ -166,4 +232,3 @@ export class GenerateCSVToshlStrategy implements OrderProcessingStrategy {
 
   // #endregion Public Methods (1)
 }
-

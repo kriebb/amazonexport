@@ -5,7 +5,7 @@ import { PageTracker } from '../PageTracker';
 
 describe('Product IDs', () => {
     let productIds: any[];
-    let sut: (itemUri: string | undefined) => (string | null | undefined);
+    let sut: (itemUri: string | undefined) => (string | null );
     beforeAll(() => {
         const content = fs.readFileSync('.\\assets\\productIds.json', 'utf-8');
         productIds = JSON.parse(content);
