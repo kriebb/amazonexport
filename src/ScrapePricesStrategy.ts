@@ -30,8 +30,9 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
   }
 
   public async processShipmentElements(shipmentElements: string[], order: OrderDetails): Promise<ItemDetails[]> {
-    const processedItems: ItemDetails[] = [];
-
+    // Create a Map to deduplicate items by title
+    const uniqueItems = new Map<string, ItemDetails>();
+    
     this.logDiagnostics(`Processing ${shipmentElements.length} shipment elements for order ${order.orderId}`);
     this.logDiagnostics(`Original order items: ${JSON.stringify(order.items)}`);
 
@@ -104,6 +105,23 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           }
         }
 
+        // Title extraction from various selectors if not already found
+        if (!itemTitle) {
+          const titleSelectors = [
+            '.yohtmlc-product-title',
+            '[data-component="itemTitle"]',
+            '.a-link-normal .a-text-bold'
+          ];
+          
+          for (const selector of titleSelectors) {
+            const titleElement = shipmentElementBody.querySelector(selector);
+            if (titleElement) {
+              itemTitle = titleElement.textContent?.trim();
+              if (itemTitle) break;
+            }
+          }
+        }
+
         // Detailed logging of extraction attempts
         this.logDiagnostics({
           orderId: order.orderId,
@@ -114,7 +132,7 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           itemQty
         });
 
-        // If productId is found, try to match with order items
+        // If productId or itemTitle is found, try to match with order items
         if (productId || itemTitle) {
           const matchingOrderItem = order.items.find(item =>
             (productId && item.productId?.trim() === productId?.trim()) ||
@@ -122,10 +140,25 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
           );
 
           if (matchingOrderItem) {
-            // Update the matched item
-            matchingOrderItem.price = extractedPrice ?? matchingOrderItem.price;
-            matchingOrderItem.qty = itemQty;
-            processedItems.push(matchingOrderItem);
+            // Create a unique key for the item using title (and product ID if available)
+            const itemKey = matchingOrderItem.title;
+            
+            // Only add or update if not already in our Map or if price is being added
+            if (!uniqueItems.has(itemKey) || 
+                (!uniqueItems.get(itemKey)?.price && extractedPrice)) {
+              
+              // If the item is already in the map but didn't have a price, update it
+              if (uniqueItems.has(itemKey) && extractedPrice) {
+                const existingItem = uniqueItems.get(itemKey)!;
+                existingItem.price = extractedPrice;
+                uniqueItems.set(itemKey, existingItem);
+              } else {
+                // Update the matched item with the extracted information
+                matchingOrderItem.price = extractedPrice ?? matchingOrderItem.price;
+                matchingOrderItem.qty = itemQty;
+                uniqueItems.set(itemKey, matchingOrderItem);
+              }
+            }
           } else {
             // If no match found, log detailed information
             this.logDiagnostics(`No matching order item found for productId: ${productId}, itemTitle: ${itemTitle}`);
@@ -139,7 +172,9 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
       }
     }
 
-    this.logDiagnostics(`Processed ${processedItems.length} items for order ${order.orderId}`);
+    // Convert Map values to array
+    const processedItems = Array.from(uniqueItems.values());
+    this.logDiagnostics(`Processed ${processedItems.length} unique items for order ${order.orderId}`);
 
     // If no items processed, return original items
     return processedItems.length > 0 ? processedItems : order.items;
@@ -148,7 +183,22 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
   public async process(orders: OrderDetails[]): Promise<OrderDetails[]> {
     this.logDiagnostics(`Starting price scraping for ${orders.length} orders`);
 
-    for (const order of orders) {
+    // Use a Set to track processed order IDs
+    const processedOrderIds = new Set<string>();
+
+    // Filter to only process unique orders
+    const uniqueOrders = orders.filter(order => {
+      if (processedOrderIds.has(order.orderId)) {
+        this.logDiagnostics(`Skipping duplicate order: ${order.orderId}`);
+        return false;
+      }
+      processedOrderIds.add(order.orderId);
+      return true;
+    });
+
+    this.logDiagnostics(`Processing ${uniqueOrders.length} unique orders out of ${orders.length} total`);
+
+    for (const order of uniqueOrders) {
       try {
         const orderDetailsUrl = new URL(this.orderItemsTemplateUrl.href.replace('%%ORDER_NUMBER%%', order.orderId || ''));
         this.logDiagnostics(`Navigating to order details URL: ${orderDetailsUrl.href}`);
@@ -167,11 +217,15 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
         this.logDiagnostics(`Error processing order ${order.orderId}: ${error}`);
       }
     }
+    
+    // Return the entire orders array, including the ones we skipped
+    // This preserves the order in the original array
     return orders;
   }
 
   public extractShipmentElements(pageContent: string): string[] {
     const shipmentElements: string[] = [];
+    const processedElements = new Set<string>(); // To avoid duplicate elements
 
     try {
       const dom = new JSDOM(pageContent);
@@ -186,23 +240,45 @@ export class ScrapePricesStrategy implements OrderProcessingStrategy {
         '.order-items-container'
       ];
 
-      shipmentSelectors.forEach(selector => {
+      // Process selectors in priority order
+      for (const selector of shipmentSelectors) {
         const pageShipmentElements = document.querySelectorAll<HTMLElement | SVGElement>(selector);
+        
         pageShipmentElements.forEach(pageShipmentElement => {
+          // Check for child elements first
           const possibleChilds = pageShipmentElement.querySelectorAll<HTMLElement | SVGElement>(this.childShipmentSelector);
+          
           if (possibleChilds.length > 0) {
             possibleChilds.forEach(child => {
-              shipmentElements.push(child.innerHTML.trim());
+              const content = child.innerHTML.trim();
+              // Only add if not a duplicate
+              if (!processedElements.has(content)) {
+                shipmentElements.push(content);
+                processedElements.add(content);
+              }
             });
           } else {
-            shipmentElements.push(pageShipmentElement.innerHTML.trim());
+            // If no child elements, use the element itself
+            const content = pageShipmentElement.innerHTML.trim();
+            // Only add if not a duplicate
+            if (!processedElements.has(content)) {
+              shipmentElements.push(content);
+              processedElements.add(content);
+            }
           }
         });
-      });
+        
+        // If we found elements with this selector, don't try the others
+        // This prevents duplicate captures from different selector hierarchies
+        if (shipmentElements.length > 0) {
+          break;
+        }
+      }
     } catch (error) {
       console.error('Error while extracting shipment elements:', error);
       this.logDiagnostics(`Shipment element extraction error: ${error}`);
     }
+    
     return shipmentElements;
   }
 
