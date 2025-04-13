@@ -5,7 +5,6 @@ import { ScrapePricesStrategy } from './ScrapePricesStrategy';
 import { PageTracker } from './PageTracker';
 import { getPaginationLinks } from './Utils';
 import { OrderProcessor } from './OrderProcessor';
-import { ScrapePricesStrategyFactory } from './ScrapePricesStrategyFactory';
 
 export class OrderOrchestrator {
   constructor(
@@ -24,16 +23,15 @@ export class OrderOrchestrator {
   private async executeScrapeOrders(): Promise<OrderDetails[]> {
     let orders: OrderDetails[] = [];
 
-
     const otherOrdersOverviewLinks = await getPaginationLinks(this.pageTracker);
     console.log('Other order overview links:', otherOrdersOverviewLinks);
-    const enrichPriceOrderProcessor = new OrderProcessor(
-      ScrapePricesStrategyFactory.create(this.orderUrlTemplate, this.pageTracker)
-    );
+
+    const scrapeOrderProcessor = new OrderProcessor(new ScrapeOrdersStrategy(this.pageTracker));
+    orders.push(...await scrapeOrderProcessor.execute(orders));
 
     for (const link of otherOrdersOverviewLinks) {
       await this.pageTracker.getCurrentPage().goto(link, { waitUntil: 'domcontentloaded', timeout: 5000 });
-      orders.push(...await enrichPriceOrderProcessor.execute(orders));
+      orders.push(...await scrapeOrderProcessor.execute(orders));
     }
 
     fs.writeFileSync(this.pathToOrderDtailsJson, JSON.stringify(orders), 'utf8');
@@ -45,7 +43,6 @@ export class OrderOrchestrator {
     orders = await enrichPriceOrderProcessor.execute(orders);
 
     fs.writeFileSync(this.pathToOrderDetailsWithPricesJson, JSON.stringify(orders), 'utf8');
-
 
     return orders;
   }
@@ -64,11 +61,24 @@ export class OrderOrchestrator {
   public async orechestrate(): Promise<OrderDetails[]> {
     let orders: OrderDetails[] = [];
 
-    await this.ensureSession();
-    if (this.scrapeOrders) orders.push(...await this.executeScrapeOrders()); else orders.push(...JSON.parse(fs.readFileSync(this.pathToOrderDtailsJson, 'utf8')));
-    if (this.scrapePrices) orders = await this.executeEnrichWithPrices(orders); else orders = JSON.parse(fs.readFileSync(this.pathToOrderDetailsWithPricesJson, 'utf8'));
-
-
+    // Only ensure session if we need to scrape something
+    if (this.scrapeOrders || this.scrapePrices) {
+      await this.ensureSession();
+    }
+    
+    // Handle order details
+    if (this.scrapeOrders) {
+      orders.push(...await this.executeScrapeOrders());
+    } else {
+      orders.push(...JSON.parse(fs.readFileSync(this.pathToOrderDtailsJson, 'utf8')));
+    }
+    
+    // Handle price enrichment
+    if (this.scrapePrices) {
+      orders = await this.executeEnrichWithPrices(orders);
+    } else {
+      orders = JSON.parse(fs.readFileSync(this.pathToOrderDetailsWithPricesJson, 'utf8'));
+    }
 
     return orders;
   }

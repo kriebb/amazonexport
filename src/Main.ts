@@ -1,8 +1,9 @@
 import dotenv from 'dotenv';
 import { PageTracker } from './PageTracker';
 import { OrderOrchestratorBuilder } from './OrderOrchestratorBuilder';
-import { GenerateCSVToshlStrategy } from './GenerateCSVToshlStrategy';
+import { GenerateCSVPocketsmithStrategy  } from './GenerateCSVPocketsmithStrategy';
 import { OrderProcessor } from './OrderProcessor';
+import { PocketSmithUpdater } from './PocketSmithUpdater';
 
 // Load environment variables from .env file
 const env = dotenv.config();
@@ -42,7 +43,7 @@ const exportOrders = async (
     const orders = await orderOrchestrator.orechestrate();
 
     // Always generate the CSV file
-    const writeOrdersToCsvProcessor = new OrderProcessor(new GenerateCSVToshlStrategy(pathToOrdersCsv));
+    const writeOrdersToCsvProcessor = new OrderProcessor(new GenerateCSVPocketsmithStrategy(pathToOrdersCsv));
     await writeOrdersToCsvProcessor.execute(orders);
 
   } catch (error) {
@@ -60,10 +61,9 @@ const main = async () => {
   const headless = env.parsed!.HEADLESS == 'true';
   const forceScrapeOrders = env.parsed!.FORCE_SCRAPE_ORDERS == 'true';
   const forceScrapePrices = env.parsed!.FORCE_SCRAPE_PRICES == 'true';
-  const scrapeAmazonDe = env.parsed!.SCRAPE_AMAZON_DE == 'true';
   const scrapeAmazonBe = env.parsed!.SCRAPE_AMAZON_BE == 'true';
   const year = env.parsed!.YEAR;
-
+  
   if (scrapeAmazonBe)
     // Amazon Belgium
     await exportOrders(
@@ -78,6 +78,7 @@ const main = async () => {
       forceScrapeOrders,
       forceScrapePrices
     );
+    const scrapeAmazonDe = env.parsed!.SCRAPE_AMAZON_DE == 'true';
 
   if (scrapeAmazonDe)
     // Amazon Germany
@@ -93,6 +94,25 @@ const main = async () => {
       forceScrapeOrders,
       forceScrapePrices
     );
+
+    const pocketsmithEnabled = env.parsed!.POCKETSMITH_ENABLED === 'true';
+
+    if (pocketsmithEnabled) {
+      try {
+        console.log('PocketSmith integration enabled. Processing CSV file...');
+
+        
+        // Create and use PocketSmith updater
+        const updater = new PocketSmithUpdater({
+
+        });
+        
+        await updater.processCsvFile('orders_be.csv');
+        console.log('PocketSmith processing complete');
+      } catch (error) {
+        console.error('Error during PocketSmith processing:', error);
+      }
+    }
 
 };
 
