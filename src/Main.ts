@@ -107,7 +107,7 @@ const main = async () => {
 
         });
         
-        await updater.processCsvFile('orders_be.csv');
+        await updater.processJsonFile('orderdetailswithprices_be.json');
         console.log('PocketSmith processing complete');
       } catch (error) {
         console.error('Error during PocketSmith processing:', error);

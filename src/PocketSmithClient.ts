@@ -84,11 +84,19 @@ export interface Transaction {
  * Order Item structure for creating new transactions
  */
 export interface OrderItem {
-  name: string;
-  description: string;
-  amount: number;
-  date: string;
-  category?: string;
+    name: string;
+    description: string;
+    amount: number;
+    date: string;
+    category?: string;
+    metadata?: {
+      orderTotal?: number;
+      orderId?: string;
+      itemPercentage?: number;
+      deliveryStatus?: string;
+      orderUrl?: string;
+      [key: string]: any; // Allow for additional metadata fields
+    };
 }
 
 /**
@@ -314,13 +322,17 @@ export class PocketSmithClient {
    * @param startDate Optional start date for search
    * @returns All Amazon transactions with their transaction account information
    */
-  async findAllAmazonTransactions(startDate?: string): Promise<{transaction: Transaction, transactionAccount: TransactionAccount}[]> {
+  async findAllAmazonTransactions(startDate?: string, endDate?: string): Promise<{transaction: Transaction, transactionAccount: TransactionAccount}[]> {
     if (!this.isInitialized) {
       throw new Error('PocketSmith client is not properly initialized.');
     }
     
+    // Default end date to today if not provided
+    const today = new Date().toISOString().split('T')[0];
+    
     const searchResults = await this.searchAllTransactions('amazon', {
-      start_date: startDate
+      start_date: startDate,
+      end_date: endDate || today // Always provide an end_date
     });
     
     // Filter for actual Amazon transactions
@@ -364,6 +376,24 @@ export class PocketSmithClient {
   ): Promise<Transaction[]> {
     if (!this.isInitialized) {
       throw new Error('PocketSmith client is not properly initialized.');
+    }
+    
+    // Validate date parameters
+    if ((params.start_date && !params.end_date) || (!params.start_date && params.end_date)) {
+      const today = new Date().toISOString().split('T')[0];
+      
+      // If one date parameter is missing, provide both
+      if (!params.start_date) {
+        // Default start_date to 30 days before end_date if missing
+        const defaultStartDate = new Date();
+        defaultStartDate.setDate(defaultStartDate.getDate() - 30);
+        params.start_date = defaultStartDate.toISOString().split('T')[0];
+      }
+      
+      if (!params.end_date) {
+        // Default end_date to today if missing
+        params.end_date = today;
+      }
     }
     
     const response = await this.axiosInstance.get<Transaction[]>(
@@ -571,17 +601,18 @@ export class PocketSmithClient {
   }
 
   /**
-   * Process Amazon order items from CSV data
-   * @param orderItems Order items from CSV
-   * @param transactionAccountId Transaction account ID to create items in
-   * @param options Processing options
-   */
-  async processAmazonOrderItems(
+ * Process Amazon order items from CSV data
+ * @param orderItems Order items from CSV
+ * @param transactionAccountId Transaction account ID to create items in
+ * @param options Processing options
+ */
+async processAmazonOrderItems(
     orderItems: OrderItem[],
     transactionAccountId: number | string,
     options: {
       deleteExisting?: boolean;
       searchStartDate?: string;
+      searchEndDate?: string; // Add this parameter
       dryRun?: boolean;
     } = {}
   ): Promise<{ deleted: number; created: number; }> {
@@ -595,12 +626,16 @@ export class PocketSmithClient {
     if (options.deleteExisting) {
       const startDate = options.searchStartDate || 
         new Date(Math.min(...orderItems.map(i => new Date(i.date).getTime()))).toISOString().split('T')[0];
+        
+      // Default end date to today if not provided
+      const endDate = options.searchEndDate || new Date().toISOString().split('T')[0];
       
-      console.log(`Finding Amazon transactions since ${startDate}...`);
+      console.log(`Finding Amazon transactions between ${startDate} and ${endDate}...`);
       
       // Get transactions for the account
       const transactions = await this.getTransactions(transactionAccountId, {
         start_date: startDate,
+        end_date: endDate,
         search: 'amazon'
       });
       
